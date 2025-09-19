@@ -1,10 +1,3 @@
-"""
-main.py
-
-Main application for the CubeSat Mission Control GUI.
-Integrates all modules into a single interface.
-Optimized for performance, maintainability, and best practices.
-"""
 import sys
 import time
 import datetime
@@ -17,32 +10,56 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 # --- Import custom modules ---
-from satellite_components import Satellite, Thruster, Sensor
+from satellite_components import Satellite
 from control_algorithm import PIDController
 from telemetry import TelemetrySystem
 from history import HistoryRecorder
 from orbit_simulation import OrbitSimulationFrame
 from login import LoginPage
+from config import (
+    SIMULATION_TICK_RATE_HZ,
+    PID_GAINS,
+    TELEMETRY_LOG_MAX_SIZE,
+    HISTORY_LOG_MAX_SIZE,
+    PLOT_DATA_MAX_POINTS,
+    APP_THEME_MODE,
+    APP_COLOR_THEME,
+    DANGER_COLOR,
+    DANGER_HOVER_COLOR,
+    PLOT_BG_COLOR,
+    CORRECTION_PLOT_COLOR,
+    DRIFT_PLOT_COLOR,
+    ON_COURSE_THRESHOLD,
+    TARGET_ALTITUDE,
+    TARGET_INCLINATION,
+    TARGET_ECCENTRICITY,
+    ICON_PATH
+)
 
-# --- Import centralized configuration ---
-import config
-
-class SatelliteGUI(ctk.CTkToplevel):
+class MainApplication(ctk.CTk):
     """
-    Main application window for the satellite control system GUI.
-    This is a Toplevel window, meant to appear after the login.
+    Main application window for the satellite control system GUI, adapted for orbital parameters.
+    This is now the root window after the user logs in.
     """
-    def __init__(self, master: ctk.CTk, target_location: tuple):
-        super().__init__(master)
-        self.login_root = master  # Keep a reference to the root login window
+    def __init__(self, target_altitude: float, target_inclination: float, target_eccentricity: float):
+        super().__init__()
 
         # --- System Initialization ---
-        self.my_satellite = Satellite(target_location)
-        self.my_thruster = Thruster()
-        self.my_sensor = Sensor(self.my_satellite)
-        self.my_telemetry = TelemetrySystem(max_log_size=config.TELEMETRY_LOG_MAX_SIZE)
-        self.my_history = HistoryRecorder(max_history_size=config.HISTORY_LOG_MAX_SIZE)
-        self.my_controller = PIDController(**config.PID_GAINS)
+        # The Satellite now stores orbital parameters, not XYZ.
+        self.my_satellite = Satellite(initial_altitude=target_altitude,
+                                      initial_inclination=target_inclination,
+                                      initial_eccentricity=target_eccentricity)
+        
+        # PID controller now targets orbital parameters.
+        self.my_controller = PIDController(**PID_GAINS)
+        
+        self.my_telemetry = TelemetrySystem(max_log_size=TELEMETRY_LOG_MAX_SIZE)
+        self.my_history = HistoryRecorder(max_history_size=HISTORY_LOG_MAX_SIZE)
+
+        # Store target parameters for easy access
+        self.target_altitude = target_altitude
+        self.target_inclination = target_inclination
+        self.target_eccentricity = target_eccentricity
 
         # --- Simulation State ---
         self.loop_is_running = False
@@ -52,15 +69,26 @@ class SatelliteGUI(ctk.CTkToplevel):
         self.status_text = "Paused"
 
         # --- OPTIMIZATION: Use deques for plot data to cap memory usage ---
-        self.drift_data = deque(maxlen=config.PLOT_DATA_MAX_POINTS)
-        self.correction_counts = deque(maxlen=config.PLOT_DATA_MAX_POINTS)
+        self.drift_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
+        self.correction_counts = deque(maxlen=PLOT_DATA_MAX_POINTS)
+        self.tick_counter = 0
+        
+        # --- Set the application icon here, as it's the most reliable method. ---
+        try:
+            if ICON_PATH.exists():
+                self.iconbitmap(ICON_PATH)
+            else:
+                print(f"Warning: Icon file not found at '{ICON_PATH}'. Skipping icon load.")
+        except Exception as e:
+            print(f"Error setting icon for main application: {e}")
 
         self._setup_gui()
+        # The on_closing method now just handles the main app and thread.
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
 
     def _setup_gui(self) -> None:
         """Initializes the main GUI window and its components."""
-        self.title("CubeSat Mission Control")
+        self.title("CubeSat Orbital Control")
         self.geometry("1600x900")
         self.minsize(1200, 700)
 
@@ -83,7 +111,7 @@ class SatelliteGUI(ctk.CTkToplevel):
         # --- Right Frame for Plots and Orbit Sim ---
         right_frame = ctk.CTkFrame(self, corner_radius=10)
         right_frame.grid(row=1, column=1, padx=10, pady=10, sticky="nsew")
-        right_frame.grid_rowconfigure(0, weight=1) # Make orbit sim expand
+        right_frame.grid_rowconfigure(0, weight=1)
         self._setup_plots_and_orbit(right_frame)
 
     def _setup_controls(self, parent: ctk.CTkFrame) -> None:
@@ -96,7 +124,7 @@ class SatelliteGUI(ctk.CTkToplevel):
         self.history_button = ctk.CTkButton(parent, text="Start Recording History", command=self.toggle_history_recording)
         self.history_button.grid(row=0, column=2, padx=5, pady=10)
         self.clear_history_button = ctk.CTkButton(parent, text="Clear History", command=self.clear_history,
-                                                  fg_color=config.DANGER_COLOR, hover_color=config.DANGER_HOVER_COLOR)
+                                                  fg_color=DANGER_COLOR, hover_color=DANGER_HOVER_COLOR)
         self.clear_history_button.grid(row=0, column=3, padx=5, pady=10)
         self.status_label = ctk.CTkLabel(parent, text=f"Status: {self.status_text}", font=("Roboto", 16))
         self.status_label.grid(row=0, column=4, padx=10, pady=10)
@@ -118,6 +146,10 @@ class SatelliteGUI(ctk.CTkToplevel):
         tab_view.pack(fill="both", expand=True, padx=10, pady=10)
         plots_tab = tab_view.add("Live Plots")
         orbit_tab = tab_view.add("Orbit Simulation")
+        
+        # Link the OrbitSimulationFrame to this controller.
+        self.orbit_simulation_frame = OrbitSimulationFrame(orbit_tab, fg_color="transparent")
+        self.orbit_simulation_frame.pack(fill="both", expand=True)
 
         # --- Live Plots ---
         plots_tab.grid_columnconfigure(0, weight=1)
@@ -125,25 +157,21 @@ class SatelliteGUI(ctk.CTkToplevel):
         self.fig_corr, self.ax_corr = self._create_plot_figure("Correction Count Over Time")
         self.ax_corr.set_xlabel("Simulation Ticks", color='white')
         self.ax_corr.set_ylabel("Total Corrections", color='white')
-        self.line_corr, = self.ax_corr.plot([], [], marker='o', color=config.CORRECTION_PLOT_COLOR)
-        self.fig_corr.tight_layout() # Adjust layout AFTER adding labels
+        self.line_corr, = self.ax_corr.plot([], [], marker='o', color=CORRECTION_PLOT_COLOR)
+        self.fig_corr.tight_layout()
         self.canvas_corr = self.embed_plot(self.fig_corr, plots_tab, 0)
 
-        self.fig_drift, self.ax_drift = self._create_plot_figure("Orbital Drift Over Time")
+        self.fig_drift, self.ax_drift = self._create_plot_figure("Orbital Parameter Error Over Time")
         self.ax_drift.set_xlabel("Simulation Ticks", color='white')
-        self.ax_drift.set_ylabel("Error Magnitude (km)", color='white')
-        self.line_drift, = self.ax_drift.plot([], [], marker='o', color=config.DRIFT_PLOT_COLOR)
-        self.fig_drift.tight_layout() # Adjust layout AFTER adding labels
+        self.ax_drift.set_ylabel("Error Magnitude", color='white')
+        self.line_drift, = self.ax_drift.plot([], [], marker='o', color=DRIFT_PLOT_COLOR)
+        self.fig_drift.tight_layout()
         self.canvas_drift = self.embed_plot(self.fig_drift, plots_tab, 1)
-
-        # --- Orbit Simulation ---
-        orbit_sim_frame = OrbitSimulationFrame(orbit_tab, fg_color="transparent")
-        orbit_sim_frame.pack(fill="both", expand=True)
 
     def _create_plot_figure(self, title: str) -> tuple:
         """Helper to create a styled matplotlib Figure and Axes."""
-        fig = plt.Figure(figsize=(8, 4), facecolor=config.PLOT_BG_COLOR)
-        ax = fig.add_subplot(111, facecolor=config.PLOT_BG_COLOR)
+        fig = plt.Figure(figsize=(8, 4), facecolor=PLOT_BG_COLOR)
+        ax = fig.add_subplot(111, facecolor=PLOT_BG_COLOR)
         ax.set_title(title, color='white')
         ax.tick_params(axis='x', colors='white')
         ax.tick_params(axis='y', colors='white')
@@ -151,7 +179,6 @@ class SatelliteGUI(ctk.CTkToplevel):
         ax.spines['top'].set_color('white')
         ax.spines['left'].set_color('white')
         ax.spines['right'].set_color('white')
-        # The tight_layout call is removed from here to be called after labels are set
         return fig, ax
 
     def embed_plot(self, fig: plt.Figure, parent: ctk.CTkFrame, row: int) -> FigureCanvasTkAgg:
@@ -201,13 +228,15 @@ class SatelliteGUI(ctk.CTkToplevel):
                 self.telemetry_text.insert(END, f"{key.replace('_', ' ').title()}: [{val_str}]\n")
             else:
                 self.telemetry_text.insert(END, f"{key.replace('_', ' ').title()}: {value}\n")
+        self.telemetry_text.see(END)
 
     def update_history_display(self):
         self.history_text.delete('1.0', END)
         for event in self.my_history.get_drift_history():
             ts = event['timestamp'].strftime('%H:%M:%S')
-            err = event['error_magnitude']
-            self.history_text.insert(END, f"[{ts}] Drift Detected! Error: {err:.4f}\n")
+            alt_change = event['altitude_change']
+            self.history_text.insert(END, f"[{ts}] Altitude Drift: {alt_change:.4f}\n")
+        self.history_text.see(END)
 
     def update_plots(self):
         """OPTIMIZED: Updates plot data without redrawing the entire figure."""
@@ -215,52 +244,86 @@ class SatelliteGUI(ctk.CTkToplevel):
         self.line_corr.set_data(range(len(self.correction_counts)), list(self.correction_counts))
         self.ax_corr.relim()
         self.ax_corr.autoscale_view()
-        self.fig_corr.tight_layout() # Re-adjust layout dynamically
+        self.fig_corr.tight_layout()
         self.canvas_corr.draw()
 
         # Update Drift Plot
         self.line_drift.set_data(range(len(self.drift_data)), list(self.drift_data))
         self.ax_drift.relim()
         self.ax_drift.autoscale_view()
-        self.fig_drift.tight_layout() # Re-adjust layout dynamically
+        self.fig_drift.tight_layout()
         self.canvas_drift.draw()
 
     # --- Main Simulation Loop ---
     def main_loop(self):
         """The core simulation loop running in a separate thread."""
         correction_count = 0
-        tick_duration = 1.0 / config.SIMULATION_TICK_RATE_HZ
+        tick_duration = 1.0 / SIMULATION_TICK_RATE_HZ
 
         while self.loop_is_running:
             start_time = time.monotonic()
             if self.paused:
                 time.sleep(0.1)
                 continue
-
-            self.my_satellite.simulate_drift()
-            current_location = self.my_sensor.get_current_position()
-            target_location = config.INITIAL_TARGET_LOCATION
-
-            distance_from_target = np.linalg.norm(np.array(target_location) - np.array(current_location))
-            is_on_course = distance_from_target < config.ON_COURSE_THRESHOLD
+            
+            # Record the altitude before drift
+            initial_altitude = self.my_satellite.get_altitude()
+            
+            # Simulate orbital drift based on a simple model
+            self.my_satellite.simulate_orbital_drift()
+            
+            # Get current orbital parameters
+            current_params = self.my_satellite.get_orbital_parameters()
+            
+            # Define target parameters as a tuple
+            target_params = (self.target_altitude, self.target_inclination, self.target_eccentricity)
+            
+            # Calculate error vector and magnitude
+            error_vector = np.array(target_params) - np.array(current_params)
+            error_magnitude = np.linalg.norm(error_vector)
+            is_on_course = error_magnitude < ON_COURSE_THRESHOLD
 
             correction_vector = None
+            altitude_change = 0
             if not is_on_course:
-                correction_vector = self.my_controller.compute_correction(target_location, current_location)
-                self.my_thruster.apply_thrust(self.my_satellite, correction_vector)
+                # PID controller corrects based on the error vector of the parameters
+                correction_vector = self.my_controller.compute_correction(target_params, current_params)
+                
+                # Apply the correction to the satellite's orbital parameters
+                self.my_satellite.apply_orbital_correction(correction_vector)
+                
                 correction_count += 1
+                
+                # Calculate the change in altitude for history logging
+                altitude_change = self.my_satellite.get_altitude() - initial_altitude
+
                 if self.recording_history:
-                    self.my_history.record_drift(datetime.datetime.now(), current_location, distance_from_target, correction_vector)
+                    # Log drift event with new parameters
+                    self.my_history.record_drift(datetime.datetime.now(), altitude_change)
                     self.after(0, self.update_history_display)
-
-            # Log data
-            self.drift_data.append(distance_from_target)
+            
+            # Log telemetry data
+            self.drift_data.append(error_magnitude)
             self.correction_counts.append(correction_count)
-            self.my_telemetry.log_status(datetime.datetime.now(), current_location, target_location, correction_vector, is_on_course)
+            self.my_telemetry.log_status(
+                datetime.datetime.now(), 
+                current_orbital_params=current_params,
+                target_orbital_params=target_params,
+                correction_vector=correction_vector,
+                is_on_course=is_on_course
+            )
 
+            # Update the OrbitSimulationFrame's state
+            self.after(0, lambda: self.orbit_simulation_frame.set_orbital_parameters(
+                self.my_satellite.get_altitude(),
+                self.my_satellite.get_inclination(),
+                self.my_satellite.get_eccentricity()
+            ))
+            
             # Schedule GUI updates on the main thread
             self.after(0, self.update_telemetry_display)
             self.after(0, self.update_plots)
+            self.tick_counter += 1
 
             # Ensure consistent loop timing
             elapsed_time = time.monotonic() - start_time
@@ -272,29 +335,36 @@ class SatelliteGUI(ctk.CTkToplevel):
         self.loop_is_running = False
         if self.loop_thread and self.loop_thread.is_alive():
             self.loop_thread.join(timeout=1.0)
-        self.login_root.destroy()  # Destroy the root window, which exits the mainloop
+        self.destroy()
         sys.exit()
 
 # --- Application Entry Point ---
 if __name__ == "__main__":
-    ctk.set_appearance_mode(config.APP_THEME_MODE)
-    ctk.set_default_color_theme(config.APP_COLOR_THEME)
-
+    ctk.set_appearance_mode(APP_THEME_MODE)
+    ctk.set_default_color_theme(APP_COLOR_THEME)
+    
     # The login window is the one and only ROOT window for the entire app.
-    login_window = LoginPage(on_login_success=None) # Callback is set after function definition
+    login_window = LoginPage(on_login_success=None)
+    
+    # Set the icon for the login window
+    try:
+        if ICON_PATH.exists():
+            login_window.iconbitmap(ICON_PATH)
+        else:
+            print(f"Warning: Icon file not found at '{ICON_PATH}'. Skipping icon load.")
+    except Exception as e:
+        print(f"Error setting icon for login window: {e}")
 
     def launch_main_app():
-        """Hides the login window and creates the main application as a Toplevel window."""
-        login_window.withdraw()
-        main_app = SatelliteGUI(
-            master=login_window,
-            target_location=config.INITIAL_TARGET_LOCATION
+        """Hides the login window and creates the main application."""
+        # Destroy the login window, then create the main app as the new root.
+        login_window.destroy()
+        main_app = MainApplication(
+            target_altitude=TARGET_ALTITUDE,
+            target_inclination=TARGET_INCLINATION,
+            target_eccentricity=TARGET_ECCENTRICITY
         )
-        main_app.grab_set() # Make the main app modal and focused
+        main_app.mainloop()
 
-    # Now that the function is defined, assign it as the callback
     login_window.on_login_success = launch_main_app
-
-    # This is the single mainloop call that runs the entire application
     login_window.mainloop()
-

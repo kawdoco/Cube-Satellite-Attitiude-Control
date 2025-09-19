@@ -10,11 +10,18 @@ from pathlib import Path
 # Defines a base path to the 'assets' directory relative to the login script.
 # This makes the application portable and prevents path errors on different computers.
 ASSETS_PATH = Path(__file__).parent / "assets"
+# Path to the application icon.
+APP_ICON_FILENAME = "satellite_icon.ico"
+ICON_PATH = ASSETS_PATH / APP_ICON_FILENAME
 
 # --- SIMULATION PARAMETERS ---
-INITIAL_TARGET_LOCATION = (100.0, 200.0, 300.0)
 SIMULATION_TICK_RATE_HZ = 1  # How many times the main loop runs per second
 ON_COURSE_THRESHOLD = 0.1  # Distance from target to be considered "On Course"
+
+# Target Orbital Parameters
+TARGET_ALTITUDE = 7000.0  # Target altitude in kilometers
+TARGET_INCLINATION = 45.0 # Target inclination in degrees
+TARGET_ECCENTRICITY = 0.2 # Target orbital eccentricity
 
 # --- PID CONTROLLER GAINS ---
 # These values determine how the satellite corrects its course.
@@ -31,17 +38,22 @@ PLOT_DATA_MAX_POINTS = 100  # Max points to show on live graphs
 
 # --- GUI APPEARANCE & THEME ---
 # Colors are centralized here for easy theme changes.
-APP_THEME_MODE = "Dark"
-APP_COLOR_THEME = "blue"
+APP_THEME_MODE = "dark"  # "dark" or "light"
+APP_COLOR_THEME = "blue"  # Custom color theme
 
-# Button Colors
-DANGER_COLOR = "#E74C3C"
-DANGER_HOVER_COLOR = "#C0392B"
+# Specific colors for GUI elements
+DANGER_COLOR = "#b30000"
+DANGER_HOVER_COLOR = "#e60000"
 
-# Plot Colors (Facecolor and Line Colors)
+# Plotting colors
 PLOT_BG_COLOR = "#2b2b2b"
-CORRECTION_PLOT_COLOR = "cyan"
-DRIFT_PLOT_COLOR = "yellow"
-ORBIT_PATH_COLOR = "red"
-SATELLITE_COLOR = "white"
-EARTH_COLOR = "#3b82f6"
+CORRECTION_PLOT_COLOR = "#3366cc"
+DRIFT_PLOT_COLOR = "#cc3333"
+
+# Orbit simulation colors
+ORBIT_PATH_COLOR = "#33cc33"
+SATELLITE_COLOR = "#ffff00"
+EARTH_COLOR = "#0052cc"
+
+# Login Page Background Image
+LOGIN_BG_IMAGE_FILENAME = "login.png"

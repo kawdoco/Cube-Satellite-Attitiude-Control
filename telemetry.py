@@ -19,8 +19,8 @@ class TelemetrySystem:
 
     def log_status(self,
                    timestamp: datetime.datetime,
-                   current_location: Tuple[float, float, float],
-                   target_location: Tuple[float, float, float],
+                   current_orbital_params: Tuple[float, float, float],
+                   target_orbital_params: Tuple[float, float, float],
                    correction_vector: Optional[List[float]],
                    is_on_course: bool) -> None:
         """
@@ -28,21 +28,21 @@ class TelemetrySystem:
 
         Args:
             timestamp: The timestamp of the log entry.
-            current_location: The satellite's current position.
-            target_location: The satellite's target position.
+            current_orbital_params: The satellite's current orbital parameters.
+            target_orbital_params: The satellite's target orbital parameters.
             correction_vector: The thrust vector applied, if any.
             is_on_course: Boolean indicating if the satellite is within tolerance.
         """
-        current_loc_np = np.array(current_location)
-        target_loc_np = np.array(target_location)
+        current_params_np = np.array(current_orbital_params)
+        target_params_np = np.array(target_orbital_params)
 
         # Calculate error magnitude using NumPy for efficiency
-        error_magnitude = np.linalg.norm(target_loc_np - current_loc_np)
+        error_magnitude = np.linalg.norm(target_params_np - current_params_np)
 
         entry = {
             "timestamp": timestamp,
-            "current_location": current_location,
-            "target_location": target_location,
+            "current_orbital_params": current_orbital_params,
+            "target_orbital_params": target_orbital_params,
             "error_magnitude": error_magnitude,
             "correction_vector": correction_vector,
             "is_on_course": is_on_course

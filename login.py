@@ -7,7 +7,7 @@ Optimized to use relative paths for assets, making it portable.
 import customtkinter as ctk
 from PIL import Image
 from tkinter import messagebox
-from config import ASSETS_PATH  # Use centralized config for paths
+from config import ASSETS_PATH, LOGIN_BG_IMAGE_FILENAME # Use centralized config for paths
 
 class LoginPage(ctk.CTk):
     """
@@ -24,7 +24,7 @@ class LoginPage(ctk.CTk):
         # --- Load and store the original image using a relative path ---
         self.original_bg_image = None
         try:
-            image_path = ASSETS_PATH / "login.png"
+            image_path = ASSETS_PATH / LOGIN_BG_IMAGE_FILENAME
             self.original_bg_image = Image.open(image_path)
         except FileNotFoundError:
             print(f"Warning: Login background image not found at '{image_path}'. Using a fallback color.")
@@ -34,31 +34,26 @@ class LoginPage(ctk.CTk):
         self.bg_label = ctk.CTkLabel(self, text="")
         self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-        # Bind the resize event to handle the background image scaling
-        self.bind("<Configure>", self._resize_image)
-
         # --- Login Frame ---
-        login_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="#1a1a1a")
-        login_frame.place(relx=0.25, rely=0.5, anchor=ctk.CENTER)
+        self.login_frame = ctk.CTkFrame(self, corner_radius=10, fg_color="transparent")
+        self.login_frame.place(relx=0.2, rely=0.5, anchor="center")
+        self.login_frame.grid_columnconfigure(0, weight=1)
+        
+        self.title_label = ctk.CTkLabel(self.login_frame, text="CubeSat Login", font=("Roboto", 24, "bold"))
+        self.title_label.grid(row=0, column=0, pady=(20, 10))
+        
+        self.username_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Username", width=250)
+        self.username_entry.grid(row=1, column=0, padx=20, pady=10)
+        
+        self.password_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Password", show="*", width=250)
+        self.password_entry.grid(row=2, column=0, padx=20, pady=10)
+        
+        self.login_button = ctk.CTkButton(self.login_frame, text="Login", width=250, command=self.attempt_login)
+        self.login_button.grid(row=3, column=0, padx=20, pady=20)
 
-        ctk.CTkLabel(login_frame, text="Mission Control Login", font=("Roboto", 24, "bold")).pack(pady=(30, 20))
+        self.bind("<Configure>", self.on_window_resize)
 
-        # --- Username ---
-        self.username_entry = ctk.CTkEntry(login_frame, width=220, placeholder_text="Username")
-        self.username_entry.pack(pady=12, padx=30)
-
-        # --- Password ---
-        self.password_entry = ctk.CTkEntry(login_frame, width=220, placeholder_text="Password", show="*")
-        self.password_entry.pack(pady=12, padx=30)
-
-        # --- Login Button ---
-        login_button = ctk.CTkButton(login_frame, text="Login", command=self.attempt_login, width=220)
-        login_button.pack(pady=(20, 30))
-
-        # Initial call to set the background
-        self._resize_image(None)
-
-    def _resize_image(self, event) -> None:
+    def on_window_resize(self, event) -> None:
         """Dynamically resizes the background image to fit the window without distortion."""
         if not self.original_bg_image:
             return  # No image to resize
@@ -88,8 +83,13 @@ class LoginPage(ctk.CTk):
         self.bg_label.image = bg_image  # Keep a reference
 
     def attempt_login(self) -> None:
-        """Validates credentials and proceeds if correct."""
-        if self.username_entry.get() == "admin" and self.password_entry.get() == "123":
-            self.on_login_success()
+        """Validates credentials and proceeds if successful."""
+        username = self.username_entry.get()
+        password = self.password_entry.get()
+        
+        if username == "admin" and password == "password":  # Hardcoded credentials for example
+            messagebox.showinfo("Login Success", "Welcome, Admin!")
+            if self.on_login_success:
+                self.on_login_success()
         else:
             messagebox.showerror("Login Failed", "Invalid username or password.")
