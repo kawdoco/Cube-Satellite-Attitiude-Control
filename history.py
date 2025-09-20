@@ -17,17 +17,13 @@ class HistoryRecorder:
 
     def record_drift(self,
                      timestamp: datetime.datetime,
-                     location: Tuple[float, float, float],
-                     error_magnitude: float,
-                     correction_vector: List[float]) -> None:
+                     altitude_change: float) -> None:
         """
         Records an event where the satellite drifted and was corrected.
         """
         drift_event = {
             "timestamp": timestamp,
-            "location": location,
-            "error_magnitude": error_magnitude,
-            "correction_vector": correction_vector
+            "altitude_change": altitude_change,
         }
         self._drift_history.append(drift_event)
 
