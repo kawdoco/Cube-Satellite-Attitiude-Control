@@ -9,6 +9,8 @@ This repository contains the simulation environment and mission control software
 
 - **Thilina**
 
+- **Gimsara**
+
 - **Imaya**
 
 - **Thamashi**
