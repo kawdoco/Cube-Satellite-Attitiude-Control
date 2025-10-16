@@ -5,18 +5,13 @@ import math
 class Satellite:
     """
     Represents an autonomous satellite, now based on orbital parameters.
+    Simulates drift and corrections for altitude, inclination, and eccentricity.
     """
     def __init__(self, initial_altitude: float, initial_inclination: float, initial_eccentricity: float):
-        # We now store orbital parameters directly
         self._altitude = initial_altitude
         self._inclination = initial_inclination
         self._eccentricity = initial_eccentricity
-
-        # This is a mock location for display purposes, as the simulation now
-        # operates purely on orbital parameters.
         self._current_location = np.array([0.0, 0.0, 0.0])
-        
-        # A flag to control the simulation behavior
         self._is_in_orbit_mode = True
 
     def get_location(self) -> np.ndarray:
@@ -24,7 +19,6 @@ class Satellite:
         Returns a mock location for display purposes, derived from orbital parameters.
         In a real system, this would be a more complex calculation.
         """
-        # A simple, illustrative transformation. Not a true orbital mechanics model.
         r = 6371 + self._altitude
         x = r * math.cos(math.radians(self._inclination))
         y = r * math.sin(math.radians(self._inclination))
@@ -46,22 +40,37 @@ class Satellite:
         return self._eccentricity
 
     def simulate_orbital_drift(self) -> None:
-        """Simulates gradual orbital drift, but only for altitude."""
-        # Only altitude drifts due to gravitational pull
+        """
+        Simulates gradual, random orbital drift for all key parameters.
+        """
+        # Altitude drifts due to atmospheric drag and gravitational anomalies
         self._altitude -= np.random.uniform(0.01, 0.05)
-        # Inclination and eccentricity are stable in this model
-        self._inclination = self._inclination
-        self._eccentricity = self._eccentricity
+        
+        # Inclination drifts due to solar wind and gravitational pull from other bodies
+        self._inclination += np.random.uniform(-0.01, 0.01)
+        
+        # Eccentricity drifts due to various orbital perturbations
+        self._eccentricity += np.random.uniform(-0.001, 0.001)
+
+        # Keep parameters within reasonable physical bounds
+        self._inclination = np.clip(self._inclination, 0, 180)
+        self._eccentricity = np.clip(self._eccentricity, 0, 0.99)
+
 
     def apply_orbital_correction(self, correction_vector: List[float]) -> None:
         """
-        Applies a correction vector, but only to altitude.
+        Applies a correction vector from the PID controller to all orbital parameters.
         Args:
-            correction_vector: The vector from the PID controller.
+            correction_vector: A 3-element list [alt_corr, inc_corr, ecc_corr].
         """
-        self._altitude += correction_vector[0]
-        self._inclination = self._inclination
-        self._eccentricity = self._eccentricity
+        if len(correction_vector) == 3:
+            self._altitude += correction_vector[0]
+            self._inclination += correction_vector[1]
+            self._eccentricity += correction_vector[2]
+
+            # Ensure parameters stay within valid ranges after correction
+            self._inclination = np.clip(self._inclination, 0, 180)
+            self._eccentricity = np.clip(self._eccentricity, 0, 0.99)
 
 class Thruster:
     """The Thruster class is no longer needed in this orbital model as corrections are applied directly."""
