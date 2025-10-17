@@ -19,7 +19,7 @@ SIMULATION_TICK_RATE_HZ = 1  # How many times the main loop runs per second
 ON_COURSE_THRESHOLD = 0.1  # Distance from target to be considered "On Course"
 
 # Target Orbital Parameters
-TARGET_ALTITUDE = 7000.0  # Target altitude in kilometers
+TARGET_ALTITUDE = 8000.0  # Target altitude in kilometers
 TARGET_INCLINATION = 45.0 # Target inclination in degrees
 TARGET_ECCENTRICITY = 0.2 # Target orbital eccentricity
 
@@ -51,8 +51,8 @@ CORRECTION_PLOT_COLOR = "#3366cc"
 DRIFT_PLOT_COLOR = "#cc3333"
 
 # Orbit simulation colors
-ORBIT_PATH_COLOR = "#33cc33"
-SATELLITE_COLOR = "#ffff00"
+ORBIT_PATH_COLOR = "#0D9F00"
+SATELLITE_COLOR = "#ff7700"  # Changed from yellow to red for the cube
 EARTH_COLOR = "#0052cc"
 
 # Login Page Background Image
