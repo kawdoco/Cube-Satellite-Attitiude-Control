@@ -9,10 +9,10 @@ from typing import List, Tuple
 
 class PIDController:
     """
-    A Proportional-Integral-Derivative (PID) controller.
+    A generic Proportional-Integral-Derivative (PID) controller.
 
     This controller calculates a correction vector based on the difference
-    between a target location and the current location. It uses NumPy for
+    between a target vector and the current vector. It uses NumPy for
     fast and efficient vector operations.
 
     Attributes:
@@ -30,22 +30,22 @@ class PIDController:
         self._previous_error = np.zeros(3)
 
     def compute_correction(self,
-                           target_location: Tuple[float, float, float],
-                           current_location: Tuple[float, float, float]
+                           target_vector: Tuple[float, float, float],
+                           current_vector: Tuple[float, float, float]
                            ) -> List[float]:
         """
         Calculates the correction vector using PID logic.
 
         Args:
-            target_location: The desired coordinates (x, y, z).
-            current_location: The current measured coordinates (x, y, z).
+            target_vector: The desired state vector (e.g., params or location).
+            current_vector: The current measured state vector.
 
         Returns:
-            The calculated correction vector to be applied by the thrusters.
+            The calculated correction vector.
         """
         # Convert inputs to NumPy arrays for vectorized operations
-        target = np.array(target_location)
-        current = np.array(current_location)
+        target = np.array(target_vector)
+        current = np.array(current_vector)
 
         # --- PID Calculation ---
         error = target - current
