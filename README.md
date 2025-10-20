@@ -5,12 +5,12 @@
 This repository contains the **simulation environment** and **mission control software** for a CubeSat Attitude Control System (ACS). The primary objective of this project is to provide a comprehensive tool for visualizing and controlling a satellite's orbit. The system uses a simulated **PID controller** to maintain a stable orbital trajectory, which is crucial for missions such as Earth imaging, scientific data collection, or telecommunications.
 
 ## 👨‍💻Project Members
-- **Dinith**
-- **Savindu**
-- **Thilina**
-- **Gimsara**
-- **Imaya**
-- **Thamashi**
+- **Dinith Madushan**
+- **Savindu Dabarera**
+- **Thilina Sandaruwan**
+- **Gimsara Pieris**
+- **Imaya Ranaweera**
+- **Thamashi Nanayakkara**
 
 ## 💡 Key Features
 

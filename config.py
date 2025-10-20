@@ -28,7 +28,10 @@ TARGET_ECCENTRICITY = 0.2 # Target orbital eccentricity
 # Kp: Proportional gain (reacts to current error)
 # Ki: Integral gain (corrects long-term error)
 # Kd: Derivative gain (dampens oscillations)
-PID_GAINS = {'Kp': 0.5, 'Ki': 0.01, 'Kd': 0.1}
+
+# --- FIX: Tuned gains to be strong enough to overcome simulated drift ---
+PID_GAINS = {'Kp': 1.2, 'Ki': 0.1, 'Kd': 0.2}
+
 
 # --- DATA & LOGGING LIMITS ---
 # Using a fixed size prevents memory usage from growing infinitely.
@@ -51,8 +54,9 @@ CORRECTION_PLOT_COLOR = "#3366cc"
 DRIFT_PLOT_COLOR = "#cc3333"
 
 # Orbit simulation colors
-ORBIT_PATH_COLOR = "#0D9F00"
-SATELLITE_COLOR = "#ff7700"  # Changed from yellow to red for the cube
+ORBIT_PATH_COLOR = "#FFA500"  # Changed from Green to Orange
+SATELLITE_COLOR = "#CCCCCC"  # Changed from orange to light grey
+SATELLITE_OUTLINE_COLOR = "#FFFFFF" # Added for satellite outline
 EARTH_COLOR = "#0052cc"
 
 # Login Page Background Image

@@ -48,10 +48,21 @@ class LoginPage(ctk.CTk):
         self.password_entry = ctk.CTkEntry(self.login_frame, placeholder_text="Password", show="*", width=250)
         self.password_entry.grid(row=2, column=0, padx=20, pady=10)
         
+        # --- Welcome Label (initially hidden) ---
+        self.welcome_label = ctk.CTkLabel(self.login_frame, text="Welcome, Admin!", font=("Roboto", 18, "bold"), text_color="#0D9F00")
+        # (It will be grid'ed in attempt_login)
+        
         self.login_button = ctk.CTkButton(self.login_frame, text="Login", width=250, command=self.attempt_login)
         self.login_button.grid(row=3, column=0, padx=20, pady=20)
 
         self.bind("<Configure>", self.on_window_resize)
+        
+        # --- Bind Enter key ---
+        # 1. Pressing Enter in username_entry moves to password_entry
+        self.username_entry.bind("<Return>", lambda event: self.password_entry.focus_set())
+        # 2. Pressing Enter in password_entry or on the window attempts login
+        self.password_entry.bind("<Return>", lambda event: self.attempt_login())
+        self.bind("<Return>", lambda event: self.attempt_login())
 
     def on_window_resize(self, event) -> None:
         """Dynamically resizes the background image to fit the window without distortion."""
@@ -87,9 +98,26 @@ class LoginPage(ctk.CTk):
         username = self.username_entry.get()
         password = self.password_entry.get()
         
-        if username == "admin" and password == "password":  # Hardcoded credentials for example
-            messagebox.showinfo("Login Success", "Welcome, Admin!")
+        # 1. Check for blank fields
+        if not username or not password:
+            messagebox.showerror("Login Failed", "Please enter both username and password.")
+            return
+
+        # 2. Check for correct credentials
+        if username == "admin" and password == "password":  # Hardcoded credentials
+            # --- Show automatic welcome message ---
+            
+            # Hide login widgets
+            self.username_entry.grid_forget()
+            self.password_entry.grid_forget()
+            self.login_button.grid_forget()
+            
+            # Show welcome message
+            self.welcome_label.grid(row=1, column=0, rowspan=3, padx=20, pady=40)
+            
+            # Call the main app launch after 2 seconds (2000 ms)
             if self.on_login_success:
-                self.on_login_success()
+                self.after(2000, self.on_login_success)
         else:
+            # 3. Handle wrong credentials
             messagebox.showerror("Login Failed", "Invalid username or password.")
