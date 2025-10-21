@@ -252,11 +252,48 @@ class MainApplication(ctk.CTk):
 
     # --- Control Logic & Callbacks ---
     def _on_apply_target(self):
-        """Callback to update the simulation's target parameters from the GUI sliders."""
-        self.target_altitude = self.alt_slider.get()
-        self.target_inclination = self.inc_slider.get()
-        self.target_eccentricity = self.ecc_slider.get()
-        print(f"INFO: New target parameters applied: Alt={self.target_altitude:.2f}, Inc={self.target_inclination:.2f}, Ecc={self.target_eccentricity:.2f}")
+        """
+        Callback to update the simulation's target parameters from the GUI sliders.
+        This function now instantly applies the new parameters to the satellite
+        and resets the PID controller to maintain the new orbit.
+        """
+        # 1. Get new target values from sliders
+        new_target_altitude = self.alt_slider.get()
+        new_target_inclination = self.inc_slider.get()
+        new_target_eccentricity = self.ecc_slider.get()
+
+        # 2. Update the internal target variables for the PID
+        self.target_altitude = new_target_altitude
+        self.target_inclination = new_target_inclination
+        self.target_eccentricity = new_target_eccentricity
+        
+        # 3. (THE FIX) Instantly apply these new parameters to the satellite itself.
+        current_alt, current_inc, current_ecc = self.my_satellite.get_orbital_parameters()
+        
+        correction_vector = [
+            new_target_altitude - current_alt,
+            new_target_inclination - current_inc,
+            new_target_eccentricity - current_ecc
+        ]
+        self.my_satellite.apply_orbital_correction(correction_vector)
+        
+        # 4. (THE FIX) Force the simulation to update its visual path immediately
+        #    This ensures the GUI reflects the change instantly.
+        self.orbit_sim_frame.set_orbital_parameters(
+            new_target_altitude, 
+            new_target_inclination, 
+            new_target_eccentricity
+        )
+        
+        # 5. (THE FIX) Reset the PID controller
+        #    This is crucial. The satellite is now *at* the new target,
+        #    so the PID's integral and derivative terms must be cleared.
+        self._reset_pid()
+
+        print(f"INFO: New target parameters applied and orbit instantly corrected: Alt={self.target_altitude:.2f}, Inc={self.target_inclination:.2f}, Ecc={self.target_eccentricity:.2f}")
+        
+        # 6. Show a confirmation message
+        self._show_correction_message("New Target Orbit Applied")
 
     def _on_speed_change(self, value):
         """Updates the animation speed of the orbit simulation."""
@@ -386,8 +423,17 @@ class MainApplication(ctk.CTk):
         self.canvas_pos.draw()
 
     def update_simulation_and_data(self):
-        """Updates the orbit simulation visuals and logs the new position data for the plot."""
-        self.orbit_sim_frame.set_orbital_parameters(*self.my_satellite.get_orbital_parameters())
+        """
+        Updates the orbit simulation visuals and logs the new position data for the plot.
+        
+        --- (THE FIX) ---
+        Removed the call to self.orbit_sim_frame.set_orbital_parameters().
+        This function should ONLY log data for the 3D plot.
+        The orbit path itself should only be updated by manual user actions 
+        (like _on_apply_target or correct_orbit_to_default).
+        """
+        # self.orbit_sim_frame.set_orbital_parameters(*self.my_satellite.get_orbital_parameters()) # <-- THIS LINE WAS THE BUG
+        
         current_pos_3d = self.orbit_sim_frame.get_current_position()
         
         # Log the position data in kilometers directly

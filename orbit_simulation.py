@@ -94,12 +94,23 @@ class OrbitSimulationFrame(ctk.CTkFrame):
             color = np.random.choice(["#FFFFFF", "#AAAAAA", "#CCCCCC"])
             self.star_items.append(self.canvas.create_oval(x, y, x + size, y + size, fill=color, outline=""))
             
+        # --- (THE FIX) ---
+        # Calculate the scale factor based on the *current* orbit
+        scale_factor = self._get_scale_factor()
+        
+        # Earth's REAL radius is ~6371 km.
+        # Scale this real radius using the same factor as the orbit.
+        earth_radius_km = 6371 
+        earth_radius = earth_radius_km * scale_factor
+        
+        # Clip the radius so it doesn't get too small or big
+        earth_radius = np.clip(earth_radius, 5.0, min(self.width, self.height) * 0.45)
+            
         # --- Redraw Earth Ocean ---
-        earth_radius = min(self.width, self.height) * 0.15
         self.canvas.coords(self.earth_ocean_item, self.center_x - earth_radius, self.center_y - earth_radius, self.center_x + earth_radius, self.center_y + earth_radius)
         
         # --- Redraw Earth Continents ---
-        land_radius = earth_radius * 0.9
+        land_radius = earth_radius * 0.9 # This now scales relatively
         
         # Delete old continent items
         for item in self.continent_items: self.canvas.delete(item)
@@ -117,6 +128,7 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         # Force redraw of continents at current rotation
         self._update_earth_rotation(force_redraw=True) 
         
+        # Redraw the orbit path to fit the new canvas size
         self._update_orbit_path_on_canvas()
 
     def _update_earth_rotation(self, force_redraw=False):
@@ -162,16 +174,27 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         self.x = x_prime.tolist()
         self.y = (y_prime * np.cos(inc_rad)).tolist()
         self.z = (y_prime * np.sin(inc_rad)).tolist()
+
+    def _get_scale_factor(self) -> float:
+        """Calculates the scaling factor (pixels per km) to fit the orbit to the canvas."""
+        if not hasattr(self, 'x') or len(self.x) == 0: 
+            # Fallback if orbit isn't computed yet, use default target
+            max_orbit_range = 6371 + TARGET_ALTITUDE
+        else:
+            max_orbit_range = max(max(abs(v) for v in self.x), max(abs(v) for v in self.y))
+        
+        if max_orbit_range == 0: 
+            max_orbit_range = 40000 # Failsafe
+        
+        # Calculate scale: (canvas_size * padding) / (real_size_in_km)
+        return (min(self.width, self.height) * 0.48) / max_orbit_range
     
     def _scale_point_to_canvas(self, x_3d, y_3d) -> tuple[float, float]:
         """Scales a 3D orbit coordinate to a 2D canvas coordinate."""
-        if not hasattr(self, 'x') or len(self.x) == 0: 
+        if not hasattr(self, 'x') or len(self.x) == 0 or self.width == 0: 
             return self.center_x, self.center_y
         
-        max_orbit_range = max(max(abs(v) for v in self.x), max(abs(v) for v in self.y))
-        if max_orbit_range == 0: max_orbit_range = 40000
-        
-        scale_factor = (min(self.width, self.height) * 0.48) / max_orbit_range
+        scale_factor = self._get_scale_factor()
         
         return self.center_x + (x_3d * scale_factor), self.center_y - (y_3d * scale_factor)
         
