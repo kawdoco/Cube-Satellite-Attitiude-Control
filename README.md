@@ -85,7 +85,7 @@ The `OrbitSimulationFrame` provides a dynamic 3D view of the CubeSat's orbit. Th
       
 <img src ="Images\plots.png" alt = "Data plots" width = "400"/>
       
- *Orbital Drift and Correction Plots*
+ *Orbital Drift and Altitude Plots*
   
 </div>
 
