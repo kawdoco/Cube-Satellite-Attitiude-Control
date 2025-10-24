@@ -21,7 +21,7 @@ from config import (
     PID_GAINS,
     TELEMETRY_LOG_MAX_SIZE,
     HISTORY_LOG_MAX_SIZE,
-    PLOT_DATA_MAX_POINTS,
+    PLOT_DATA_MAX_POINTS, # Re-enabled for scrolling plots
     APP_THEME_MODE,
     APP_COLOR_THEME,
     DANGER_COLOR,
@@ -31,7 +31,8 @@ from config import (
     TARGET_ALTITUDE,
     TARGET_INCLINATION,
     TARGET_ECCENTRICITY,
-    ICON_PATH
+    ICON_PATH,
+    PLANET_DATA  # Import new planet data
 )
 
 class MainApplication(ctk.CTk):
@@ -59,11 +60,17 @@ class MainApplication(ctk.CTk):
         self.loop_thread = None
         self.paused = True
         self.status_text = "Paused"
+        self.correction_count = 0 # <-- NEW: Correction counter
 
-        # --- Plot Data ---
+        # --- Plot Data (deques now have maxlen for scrolling) ---
         self.x_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
         self.y_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
         self.z_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
+        
+        # --- New Plot Data for Corrections (with maxlen) ---
+        self.corr_alt_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
+        self.corr_inc_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
+        self.corr_ecc_data = deque(maxlen=PLOT_DATA_MAX_POINTS)
         
         try:
             if ICON_PATH.exists():
@@ -158,9 +165,11 @@ class MainApplication(ctk.CTk):
 
     def _setup_parameter_controls(self, parent: ctk.CTkFrame):
         """Sets up the altitude, inclination, eccentricity, and orbit speed controls."""
-        parent.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+        parent.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1) # 6 columns
         parent.grid_rowconfigure(0, weight=0) # Labels
         parent.grid_rowconfigure(1, weight=1) # Sliders
+        parent.grid_rowconfigure(2, weight=0) # Planet selector
+        parent.grid_rowconfigure(3, weight=0) # Background selector
         
         # --- Altitude ---
         self.alt_label = ctk.CTkLabel(parent, text=f"Altitude: {TARGET_ALTITUDE:.0f} km")
@@ -189,27 +198,98 @@ class MainApplication(ctk.CTk):
         self.speed_slider = ctk.CTkSlider(parent, from_=0.1, to=20.0, command=self._on_speed_change) # Increased range
         self.speed_slider.set(1.0)
         self.speed_slider.grid(row=1, column=3, padx=10, pady=(0, 10), sticky="ew")
+
+        # --- Planet Selector (Tab-style) ---
+        ctk.CTkLabel(parent, text="Target Planet:").grid(row=2, column=0, padx=10, pady=(5, 10), sticky="e")
+        self.planet_selector = ctk.CTkSegmentedButton(parent, values=list(PLANET_DATA.keys()),
+                                                      command=self._on_planet_change)
+        self.planet_selector.set("Earth")
+        self.planet_selector.grid(row=2, column=1, columnspan=4, padx=10, pady=(5, 10), sticky="ew")
+        
+        # --- NEW: Background Symbol Buttons ---
+        ctk.CTkLabel(parent, text="Background:").grid(row=3, column=0, padx=10, pady=(5, 10), sticky="e")
+        
+        # Create a frame to hold the buttons
+        bg_button_frame = ctk.CTkFrame(parent, fg_color="transparent")
+        bg_button_frame.grid(row=3, column=1, columnspan=4, padx=10, pady=(5, 10), sticky="ew")
+        bg_button_frame.grid_columnconfigure((0, 1, 2), weight=1) # Make buttons expand
+        
+        self.bg_btn_black = ctk.CTkButton(bg_button_frame, text="🌙", font=("Segoe UI Emoji", 18),
+                                          command=lambda: self._on_background_change("Black"))
+        self.bg_btn_black.grid(row=0, column=0, padx=5, sticky="ew")
+        
+        self.bg_btn_blue = ctk.CTkButton(bg_button_frame, text="✨", font=("Segoe UI Emoji", 18),
+                                         command=lambda: self._on_background_change("Dark Blue"))
+        self.bg_btn_blue.grid(row=0, column=1, padx=5, sticky="ew")
+
+        self.bg_btn_streak = ctk.CTkButton(bg_button_frame, text="☄️", font=("Segoe UI Emoji", 18),
+                                           command=lambda: self._on_background_change("Starfield"))
+        self.bg_btn_streak.grid(row=0, column=2, padx=5, sticky="ew")
+        # --- END NEW ---
         
         # --- Apply Button ---
         self.apply_button = ctk.CTkButton(parent, text="Apply Target", command=self._on_apply_target)
-        self.apply_button.grid(row=0, column=4, rowspan=2, padx=10, pady=10, sticky="ns")
+        self.apply_button.grid(row=0, column=5, rowspan=4, padx=10, pady=10, sticky="ns") # Spans 4 rows now
 
     def _setup_right_panel(self):
         """Sets up the 3D plot and telemetry/history logs on the right panel."""
-        # --- 3D Position Plot ---
-        plot_container = ctk.CTkFrame(self.right_panel)
-        plot_container.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
-        plot_container.grid_rowconfigure(1, weight=1)
-        plot_container.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(plot_container, text="3D Satellite Position", font=("Roboto", 16, "bold")).grid(row=0, column=0, pady=5)
-        self.fig_pos, self.ax_pos = self._create_plot_figure()
-        self.canvas_pos = FigureCanvasTkAgg(self.fig_pos, master=plot_container)
-        self.canvas_pos.get_tk_widget().grid(row=1, column=0, sticky="nsew")
+        # --- Create Tab View for Plots ---
+        plot_tab_view = ctk.CTkTabview(self.right_panel)
+        plot_tab_view.grid(row=0, column=0, sticky="nsew", pady=(0, 10))
+        plot_tab_view.add("Position")
+        plot_tab_view.add("Correction")
         
-        toolbar = NavigationToolbar2Tk(self.canvas_pos, plot_container, pack_toolbar=False)
-        toolbar.update()
-        toolbar.grid(row=2, column=0, sticky="ew", padx=10, pady=5)
+        # --- 3D Position Plot Tab ---
+        pos_tab = plot_tab_view.tab("Position")
+        pos_tab.grid_rowconfigure(0, weight=1)
+        pos_tab.grid_columnconfigure(0, weight=1)
+        
+        self.fig_pos, self.ax_pos = self._create_plot_figure(
+            y_label="Position (km)",
+            line_labels=['X Position (km)', 'Y Position (km)', 'Z Position (km)'],
+            colors=['r', 'b', 'g']
+        )
+        self.canvas_pos = FigureCanvasTkAgg(self.fig_pos, master=pos_tab)
+        self.canvas_pos.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+        
+        toolbar_pos = NavigationToolbar2Tk(self.canvas_pos, pos_tab, pack_toolbar=False)
+        toolbar_pos.update()
+        toolbar_pos.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        
+        # Store lines for position
+        self.line_x = self.ax_pos.lines[0]
+        self.line_y = self.ax_pos.lines[1]
+        self.line_z = self.ax_pos.lines[2]
+
+        # --- Correction Plot Tab ---
+        corr_tab = plot_tab_view.tab("Correction")
+        corr_tab.grid_rowconfigure(0, weight=1)
+        corr_tab.grid_columnconfigure(0, weight=1)
+        corr_tab.grid_rowconfigure(1, weight=0) # <-- NEW: For toolbar
+        corr_tab.grid_rowconfigure(2, weight=0) # <-- NEW: For counter
+        
+        self.fig_corr, self.ax_corr = self._create_plot_figure(
+            y_label="Correction Magnitude",
+            line_labels=['Altitude Correction', 'Inclination Correction', 'Eccentricity Correction'],
+            colors=['#FFA500', '#00FFFF', '#FF00FF'] # Orange, Cyan, Magenta
+        )
+        self.canvas_corr = FigureCanvasTkAgg(self.fig_corr, master=corr_tab)
+        self.canvas_corr.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+        
+        toolbar_corr = NavigationToolbar2Tk(self.canvas_corr, corr_tab, pack_toolbar=False)
+        toolbar_corr.update()
+        toolbar_corr.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
+        
+        # --- NEW: Correction Counter Label ---
+        self.correction_counter_label = ctk.CTkLabel(corr_tab, text="Total Corrections Applied: 0", font=("Roboto", 14))
+        self.correction_counter_label.grid(row=2, column=0, sticky="ew", padx=10, pady=(0, 5))
+        # --- END NEW ---
+        
+        # Store lines for correction
+        self.line_corr_alt = self.ax_corr.lines[0]
+        self.line_corr_inc = self.ax_corr.lines[1]
+        self.line_corr_ecc = self.ax_corr.lines[2]
         
         # --- Telemetry Log ---
         telemetry_container = ctk.CTkFrame(self.right_panel)
@@ -229,23 +309,26 @@ class MainApplication(ctk.CTk):
         self.history_text = scrolledtext.ScrolledText(history_container, wrap='word', height=10, bg="#2b2b2b", fg="white", bd=0)
         self.history_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
 
-    def _create_plot_figure(self) -> tuple:
-        """Helper to create a styled matplotlib Figure and Axes."""
+    def _create_plot_figure(self, y_label: str, line_labels: list, colors: list) -> tuple:
+        """Helper to create a styled matplotlib Figure and Axes for any plot."""
         fig = plt.Figure(figsize=(8, 4), facecolor=PLOT_BG_COLOR)
         ax = fig.add_subplot(111, facecolor=PLOT_BG_COLOR)
         ax.set_xlabel("Time Step", color='white')
-        ax.set_ylabel("Position (km)", color='white')
+        ax.set_ylabel(y_label, color='white')
         ax.tick_params(axis='x', colors='white')
         ax.tick_params(axis='y', colors='white')
         ax.spines['bottom'].set_color('white')
         ax.spines['top'].set_color('white')
         ax.spines['left'].set_color('white')
         ax.spines['right'].set_color('white')
+        
+        # --- ADDED GRID ---
+        ax.grid(True, linestyle='--', alpha=0.6, color='gray')
 
         # Define lines for the plot
-        self.line_x, = ax.plot([], [], 'r-', label='X Position (km)')
-        self.line_y, = ax.plot([], [], 'b-', label='Y Position (km)')
-        self.line_z, = ax.plot([], [], 'g-', label='Z Position (km)')
+        for label, color in zip(line_labels, colors):
+            ax.plot([], [], color=color, linestyle='-', label=label)
+        
         ax.legend(labelcolor='white')
         fig.tight_layout()
         return fig, ax
@@ -289,6 +372,11 @@ class MainApplication(ctk.CTk):
         #    This is crucial. The satellite is now *at* the new target,
         #    so the PID's integral and derivative terms must be cleared.
         self._reset_pid()
+        
+        # --- (USER REQUEST) ---
+        # self.correction_count = 0 # <-- REMOVED AS REQUESTED
+        # self.update_correction_counter() # <-- REMOVED AS REQUESTED
+        # --- END (USER REQUEST) ---
 
         print(f"INFO: New target parameters applied and orbit instantly corrected: Alt={self.target_altitude:.2f}, Inc={self.target_inclination:.2f}, Ecc={self.target_eccentricity:.2f}")
         
@@ -300,6 +388,25 @@ class MainApplication(ctk.CTk):
         speed = float(value)
         self.speed_label.configure(text=f"Orbit Speed: {speed:.1f}x")
         self.orbit_sim_frame.update_speed(speed)
+
+    def _on_planet_change(self, planet_name: str):
+        """Tells the orbit simulation to switch planets."""
+        if self.orbit_sim_frame:
+            self.orbit_sim_frame.set_planet(planet_name)
+            # When planet changes, we must re-compute the orbit
+            # based on the new planet's radius
+            self.orbit_sim_frame.set_orbital_parameters(
+                self.my_satellite.get_altitude(),
+                self.my_satellite.get_inclination(),
+                self.my_satellite.get_eccentricity()
+            )
+
+    # --- NEW: Background Change Callback ---
+    def _on_background_change(self, bg_name: str):
+        """Tells the orbit simulation to change its background color."""
+        if self.orbit_sim_frame:
+            self.orbit_sim_frame.set_background(bg_name)
+    # --- END NEW ---
 
     def _reset_pid(self):
         """Resets the PID controller's internal state."""
@@ -334,6 +441,11 @@ class MainApplication(ctk.CTk):
         # Reset the PID controller
         self._reset_pid()
         
+        # --- NEW: Reset correction counter ---
+        self.correction_count = 0
+        self.update_correction_counter()
+        # --- END NEW ---
+        
         print("INFO: 'Correct Orbit' applied. Orbit reset to default starting position.")
         # Show the confirmation message
         self._show_correction_message("Orbit Correction Message")
@@ -350,6 +462,12 @@ class MainApplication(ctk.CTk):
         if messagebox.askyesno("Confirm Clear", "Are you sure you want to clear the drift history log?"):
             self.my_history.clear_history()
             self.update_history_display()
+            
+            # --- NEW: Reset correction counter ---
+            self.correction_count = 0
+            self.update_correction_counter()
+            # --- END NEW ---
+            
             print("INFO: Drift history cleared.")
 
     def toggle_loop(self):
@@ -412,15 +530,34 @@ class MainApplication(ctk.CTk):
 
     def update_plots(self):
         """Updates plot data without redrawing the entire figure."""
-        ticks = range(len(self.x_data))
-        self.line_x.set_data(ticks, list(self.x_data))
-        self.line_y.set_data(ticks, list(self.y_data))
-        self.line_z.set_data(ticks, list(self.z_data))
+        # --- Update Position Plot ---
+        pos_ticks = range(len(self.x_data))
+        self.line_x.set_data(pos_ticks, list(self.x_data))
+        self.line_y.set_data(pos_ticks, list(self.y_data))
+        self.line_z.set_data(pos_ticks, list(self.z_data))
 
         self.ax_pos.relim()
         self.ax_pos.autoscale_view()
         self.fig_pos.tight_layout()
         self.canvas_pos.draw()
+
+        # --- Update Correction Plot ---
+        corr_ticks = range(len(self.corr_alt_data))
+        self.line_corr_alt.set_data(corr_ticks, list(self.corr_alt_data))
+        self.line_corr_inc.set_data(corr_ticks, list(self.corr_inc_data))
+        self.line_corr_ecc.set_data(corr_ticks, list(self.corr_ecc_data))
+
+        self.ax_corr.relim()
+        self.ax_corr.autoscale_view()
+        self.fig_corr.tight_layout()
+        self.canvas_corr.draw()
+        
+    # --- NEW: Update counter label ---
+    def update_correction_counter(self):
+        """Updates the correction counter label on the GUI."""
+        if hasattr(self, 'correction_counter_label'):
+            self.correction_counter_label.configure(text=f"Total Corrections Applied: {self.correction_count}")
+    # --- END NEW ---
 
     def update_simulation_and_data(self):
         """
@@ -466,6 +603,7 @@ class MainApplication(ctk.CTk):
             if not is_on_course:
                 correction_vector = self.my_controller.compute_correction(target_params, current_params)
                 self.my_satellite.apply_orbital_correction(correction_vector)
+                self.correction_count += 1 # <-- NEW: Increment counter
             
             # --- Logging and History ---
             if self.recording_history:
@@ -481,10 +619,21 @@ class MainApplication(ctk.CTk):
                 is_on_course=is_on_course
             )
             
+            # --- Log data for Correction Plot ---
+            if correction_vector:
+                self.corr_alt_data.append(correction_vector[0])
+                self.corr_inc_data.append(correction_vector[1])
+                self.corr_ecc_data.append(correction_vector[2])
+            else:
+                self.corr_alt_data.append(0.0)
+                self.corr_inc_data.append(0.0)
+                self.corr_ecc_data.append(0.0)
+
             # --- Schedule GUI updates on the main thread ---
             self.after(0, self.update_simulation_and_data)
             self.after(0, self.update_telemetry_display)
             self.after(0, self.update_plots)
+            self.after(0, self.update_correction_counter) # <-- NEW: Update counter label
 
             # --- Tick Rate Control ---
             elapsed_time = time.monotonic() - start_time
