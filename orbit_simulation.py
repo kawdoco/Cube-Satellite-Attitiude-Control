@@ -2,7 +2,8 @@ import customtkinter as ctk
 import numpy as np
 from config import (
     ORBIT_PATH_COLOR, 
-    EARTH_COLOR, 
+    # EARTH_COLOR, # No longer used
+    PLANET_DATA, # Import new planet data
     TARGET_ALTITUDE, 
     TARGET_INCLINATION, 
     TARGET_ECCENTRICITY,
@@ -14,7 +15,7 @@ class OrbitSimulationFrame(ctk.CTkFrame):
     """
     A high-performance GUI frame for visualizing a satellite's orbit
     using a 2D Tkinter Canvas for a top-down view. 
-    Now features a rotating Earth and a spinning satellite.
+    Now features animated backgrounds.
     """
     def __init__(self, master, *args, **kwargs):
         super().__init__(master, *args, **kwargs)
@@ -23,26 +24,36 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
+        # --- Background and Star Colors ---
+        self.bg_color = "black"
+        self.dark_bg_star_colors = ["#FFFFFF", "#AAAAAA", "#CCCCCC", "#999999"]
+        self.current_star_colors = self.dark_bg_star_colors
+        
+        # --- NEW: Animation State ---
+        self.current_bg_animation = "static" # "static", "twinkle", "streak"
+        self.stars = [] # List of star data dicts
+        self.star_canvas_items = [] # List of canvas item IDs
+        self.num_stars = 300
+
         # --- 2D Simulation Canvas ---
-        self.canvas = ctk.CTkCanvas(self, bg="black", highlightthickness=0)
+        self.canvas = ctk.CTkCanvas(self, bg=self.bg_color, highlightthickness=0)
         self.canvas.grid(row=0, column=0, padx=5, pady=5, sticky="nsew")
         
         # --- Canvas Size & Elements ---
         self.width, self.height = 700, 700
         self.center_x, self.center_y = 350, 350
-        self.star_items = []
         
-        self.earth_ocean_item = self.canvas.create_oval(0, 0, 0, 0, fill=EARTH_COLOR, outline="")
+        # --- Planet Data ---
+        self.current_planet_data = None
+        
+        # This call will load "Earth" data and colors
+        self.set_planet("Earth", initial_setup=True) 
+
+        self.earth_ocean_item = self.canvas.create_oval(0, 0, 0, 0, fill=self.current_planet_data["color"], outline="")
         
         # --- Earth Rotation Elements ("Dual Rotation" Part 1) ---
         self.continent_items = []
-        # Base continent shapes (normalized coordinates, (0,0) center)
-        self.base_continents_normalized = [
-            np.array([[0.1, 0.2], [0.3, 0.1], [0.5, 0.3], [0.4, 0.5], [0.2, 0.4]]),
-            np.array([[-0.5, -0.1], [-0.3, -0.2], [-0.2, -0.5], [-0.4, -0.6], [-0.6, -0.4]]),
-            np.array([[-0.2, 0.5], [-0.1, 0.3], [0.1, 0.6], [-0.1, 0.8]]),
-            np.array([[0.2, -0.7], [0.3, -0.6], [0.4, -0.8]])
-        ]
+        # Base continent shapes are now loaded from self.current_planet_data in _on_canvas_resize
         self.base_continent_shapes_scaled = [] # To store scaled (but not centered) shapes
         self._earth_rotation_angle = 0.0
 
@@ -64,6 +75,12 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         # Bind resize event
         self.canvas.bind("<Configure>", self._on_canvas_resize)
 
+        # --- Zoom Controls ---
+        self.zoom_level = 1.0
+        self.canvas.bind("<MouseWheel>", self._on_zoom)  # Windows/macOS
+        self.canvas.bind("<Button-4>", self._on_zoom)  # Linux scroll up
+        self.canvas.bind("<Button-5>", self._on_zoom)  # Linux scroll down
+
         # --- Animation & State Variables ---
         self._rotation_angle = 0.0 # Use float for smoother speed changes
         self._speed = 1.0
@@ -78,29 +95,57 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         # --- FIX 2: Start the _animate loop, but it will be idle ---
         self._animate() 
 
+    # --- NEW: Star Creation Method ---
+    def _create_stars(self):
+        """Clears and redraws the starfield based on current settings."""
+        # Clear existing stars
+        for item_id in self.star_canvas_items:
+            self.canvas.delete(item_id)
+        self.stars.clear()
+        self.star_canvas_items.clear()
+        
+        if self.width <= 1 or self.height <= 1: return # Avoid error on minimize
+        
+        for _ in range(self.num_stars):
+            # Use uniform distribution for more natural star placement
+            x = np.random.uniform(0, self.width)
+            y = np.random.uniform(0, self.height)
+            z = np.random.uniform(0.1, 1.0) # z-depth for parallax
+            
+            # Closer stars (lower z) are slightly bigger
+            size = (1.1 - z) * 2.5 
+            color = np.random.choice(self.current_star_colors)
+            
+            item_id = self.canvas.create_oval(x, y, x + size, y + size, fill=color, outline="")
+            
+            # Store star data for animation
+            self.stars.append({
+                "id": item_id, 
+                "x": x, "y": y, "z": z, 
+                "size": size, 
+                "base_color": color
+            })
+            self.star_canvas_items.append(item_id)
+
     def _on_canvas_resize(self, event):
         """Redraws static elements (stars, Earth) when the canvas size changes."""
-        self.width = event.width
-        self.height = event.height
+        
+        # If event is None (from a fake call), use existing width/height
+        if event:
+            self.width = event.width
+            self.height = event.height
+        
         self.center_x, self.center_y = self.width / 2, self.height / 2
         
-        # --- Redraw Stars ---
-        for item in self.star_items: self.canvas.delete(item)
-        self.star_items.clear()
-        
-        for _ in range(300):
-            x, y = np.random.randint(0, self.width), np.random.randint(0, self.height)
-            size = np.random.randint(1, 3)
-            color = np.random.choice(["#FFFFFF", "#AAAAAA", "#CCCCCC"])
-            self.star_items.append(self.canvas.create_oval(x, y, x + size, y + size, fill=color, outline=""))
+        # --- MODIFIED: Re-create starfield ---
+        self._create_stars()
             
         # --- (THE FIX) ---
         # Calculate the scale factor based on the *current* orbit
         scale_factor = self._get_scale_factor()
         
-        # Earth's REAL radius is ~6371 km.
-        # Scale this real radius using the same factor as the orbit.
-        earth_radius_km = 6371 
+        # Earth's REAL radius is read from planet data
+        earth_radius_km = self.current_planet_data["radius_km"]
         earth_radius = earth_radius_km * scale_factor
         
         # Clip the radius so it doesn't get too small or big
@@ -117,12 +162,12 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         self.continent_items.clear()
         self.base_continent_shapes_scaled.clear()
 
-        # Re-create continents based on new size
-        for shape_norm in self.base_continents_normalized:
+        # Re-create continents based on new size from planet data
+        for shape_norm in self.current_planet_data["continents"]:
             shape_scaled = shape_norm * land_radius
             self.base_continent_shapes_scaled.append(shape_scaled)
             shape_centered = shape_scaled + np.array([self.center_x, self.center_y])
-            item = self.canvas.create_polygon(shape_centered.flatten().tolist(), fill="#006400", outline="")
+            item = self.canvas.create_polygon(shape_centered.flatten().tolist(), fill=self.current_planet_data["land_color"], outline="")
             self.continent_items.append(item)
         
         # Force redraw of continents at current rotation
@@ -155,13 +200,70 @@ class OrbitSimulationFrame(ctk.CTkFrame):
             self.canvas.coords(item, *rotated_coords)
             self.canvas.tag_lower(item, self.orbit_path_item) # Keep continents under orbit path
 
+    def _on_zoom(self, event):
+        """Handles mouse wheel scrolling to zoom in and out."""
+        if event.delta > 0 or event.num == 4:
+            self.zoom_level *= 1.1  # Zoom in
+        elif event.delta < 0 or event.num == 5:
+            self.zoom_level /= 1.1  # Zoom out
+        self.zoom_level = np.clip(self.zoom_level, 0.1, 20.0) # Clamp zoom
+        
+        # Force a redraw of static elements with new zoom
+        # We pass None so _on_canvas_resize uses the existing canvas width/height
+        self._on_canvas_resize(event=None)
+
+    # --- MODIFIED: Set Background Method ---
+    def set_background(self, bg_name: str):
+        """Updates the canvas background color and star colors."""
+        if bg_name == "Black":
+            self.bg_color = "black"
+            self.current_star_colors = self.dark_bg_star_colors
+            self.current_bg_animation = "static"
+        elif bg_name == "Dark Blue":
+            self.bg_color = "#000020" # A very dark navy blue
+            self.current_star_colors = self.dark_bg_star_colors
+            self.current_bg_animation = "twinkle"
+        elif bg_name == "Starfield":
+            self.bg_color = "#100010" # A dark purple/black
+            self.current_star_colors = self.dark_bg_star_colors
+            self.current_bg_animation = "streak"
+        else:
+            return # Unknown name
+
+        # Apply the new background color to the canvas
+        self.canvas.configure(bg=self.bg_color)
+        
+        # Force a redraw of the canvas to update the stars
+        self._on_canvas_resize(event=None)
+    # --- END MODIFIED ---
+
+    def set_planet(self, planet_name: str, initial_setup: bool = False):
+        """Loads data for a new planet and redraws it."""
+        if planet_name not in PLANET_DATA:
+            print(f"Error: Planet '{planet_name}' not found in config.")
+            return
+        
+        self.current_planet_data = PLANET_DATA[planet_name]
+        
+        # Update ocean color
+        if hasattr(self, 'earth_ocean_item'):
+             self.canvas.itemconfig(self.earth_ocean_item, fill=self.current_planet_data["color"])
+        
+        # We must force a resize/redraw to rebuild continents and rescale
+        if not initial_setup and hasattr(self, 'width'):
+            self._on_canvas_resize(event=None)
+
     def update_speed(self, val: float) -> None:
         """Updates the satellite's animation speed. Called from main.py."""
         self._speed = val
 
     def compute_orbit(self, altitude: float, inclination: float, eccentricity: float) -> None:
         """Calculates the 3D coordinates of the orbit path."""
-        a = 6371 + altitude
+        
+        # Use the radius of the *current* planet
+        planet_radius_km = self.current_planet_data["radius_km"]
+        a = planet_radius_km + altitude
+        
         e = eccentricity
         num_points = 500
         theta = np.linspace(0, 2 * np.pi, num_points)
@@ -179,7 +281,7 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         """Calculates the scaling factor (pixels per km) to fit the orbit to the canvas."""
         if not hasattr(self, 'x') or len(self.x) == 0: 
             # Fallback if orbit isn't computed yet, use default target
-            max_orbit_range = 6371 + TARGET_ALTITUDE
+            max_orbit_range = self.current_planet_data["radius_km"] + TARGET_ALTITUDE
         else:
             max_orbit_range = max(max(abs(v) for v in self.x), max(abs(v) for v in self.y))
         
@@ -187,7 +289,8 @@ class OrbitSimulationFrame(ctk.CTkFrame):
             max_orbit_range = 40000 # Failsafe
         
         # Calculate scale: (canvas_size * padding) / (real_size_in_km)
-        return (min(self.width, self.height) * 0.48) / max_orbit_range
+        base_scale = (min(self.width, self.height) * 0.48) / max_orbit_range
+        return base_scale * self.zoom_level # Apply zoom
     
     def _scale_point_to_canvas(self, x_3d, y_3d) -> tuple[float, float]:
         """Scales a 3D orbit coordinate to a 2D canvas coordinate."""
@@ -206,11 +309,49 @@ class OrbitSimulationFrame(ctk.CTkFrame):
         canvas_points = [coord for x, y in zip(self.x, self.y) for coord in self._scale_point_to_canvas(x, y)]
         self.canvas.coords(self.orbit_path_item, *canvas_points)
 
+    # --- NEW: Background Animation Method ---
+    def _animate_background(self):
+        """Runs the animation for the currently selected background."""
+        
+        if self.current_bg_animation == "twinkle":
+            # Randomly change the color of 10 stars per frame
+            for _ in range(10):
+                if not self.stars: return
+                star = self.stars[np.random.randint(0, len(self.stars))]
+                new_color = np.random.choice(self.dark_bg_star_colors)
+                self.canvas.itemconfig(star["id"], fill=new_color)
+        
+        elif self.current_bg_animation == "streak":
+            # Move stars from right to left, wrapping around
+            # Scale the speed with the orbit speed slider
+            streak_speed = 3.0 * self._speed
+            
+            for star in self.stars:
+                # Move star based on its z-depth (parallax)
+                star["x"] -= (streak_speed * star["z"])
+                
+                # If star goes off-screen left, wrap it to the right
+                if star["x"] < -star["size"]:
+                    star["x"] = self.width
+                    star["y"] = np.random.uniform(0, self.height)
+                
+                # Update canvas coordinates
+                self.canvas.coords(star["id"], star["x"], star["y"], 
+                                   star["x"] + star["size"], star["y"] + star["size"])
+
+        elif self.current_bg_animation == "static":
+            # Do nothing, stars are static
+            pass
+
     def _animate(self) -> None:
         """High-frequency animation loop for moving the satellite and rotating Earth."""
         
         # --- FIX 2: Only run animation logic if not paused ---
         if self.is_animating:
+            
+            # --- NEW: Animate Background ---
+            self._animate_background()
+            
             # --- DUAL ROTATION 1: Rotate Earth ---
             self._update_earth_rotation()
             
@@ -235,6 +376,12 @@ class OrbitSimulationFrame(ctk.CTkFrame):
                 
                 self.canvas.coords(self.satellite_item, *final_shape.flatten())
                 
+                # --- (THE FIX) ---
+                # self.canvas.tag_raise(self.earth_ocean_item) # <-- REMOVED: This was covering the continents
+                # --- (END THE FIX) ---
+                
+                # Continents are lowered below orbit path in _update_earth_rotation
+                
                 self.canvas.tag_raise(self.orbit_path_item)
                 self.canvas.tag_raise(self.satellite_item)
 
@@ -248,8 +395,18 @@ class OrbitSimulationFrame(ctk.CTkFrame):
     def set_orbital_parameters(self, altitude: float, inclination: float, eccentricity: float, initial_setup: bool = False) -> None:
         """Updates the orbit path based on new parameters from the main loop."""
         self.compute_orbit(altitude, inclination, eccentricity)
-        self._update_orbit_path_on_canvas()
         
+        # --- (USER REQUEST FIX) ---
+        # Force a full redraw of the canvas, which resizes the planet
+        # and then redraws the orbit path.
+        # This is called with event=None to use the existing canvas size.
+        
+        # --- (THE FIX) ---
+        self._on_canvas_resize(event=None) # <-- Was 'self_on_canvas_resize'
+        # --- (END THE FIX) ---
+        
+        # self._update_orbit_path_on_canvas() # <-- No longer needed, _on_canvas_resize does this.
+
         if hasattr(self, 'x') and len(self.x) > 0:
             self._rotation_angle = self._rotation_angle % len(self.x)
         else:

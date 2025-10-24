@@ -5,6 +5,7 @@ Centralized configuration file for the CubeSat Mission Control application.
 Stores constants and settings to make the application easier to manage and tune.
 """
 from pathlib import Path
+import numpy as np
 
 # --- DIRECTORY PATHS ---
 # Defines a base path to the 'assets' directory relative to the login script.
@@ -37,7 +38,7 @@ PID_GAINS = {'Kp': 1.2, 'Ki': 0.1, 'Kd': 0.2}
 # Using a fixed size prevents memory usage from growing infinitely.
 TELEMETRY_LOG_MAX_SIZE = 1000
 HISTORY_LOG_MAX_SIZE = 500
-PLOT_DATA_MAX_POINTS = 100  # Max points to show on live graphs
+PLOT_DATA_MAX_POINTS = 100  # Max points to show on live graphs (for scrolling effect)
 
 # --- GUI APPEARANCE & THEME ---
 # Colors are centralized here for easy theme changes.
@@ -57,7 +58,44 @@ DRIFT_PLOT_COLOR = "#cc3333"
 ORBIT_PATH_COLOR = "#FFA500"  # Changed from Green to Orange
 SATELLITE_COLOR = "#CCCCCC"  # Changed from orange to light grey
 SATELLITE_OUTLINE_COLOR = "#FFFFFF" # Added for satellite outline
-EARTH_COLOR = "#0052cc"
+# EARTH_COLOR = "#0052cc" # Removed, now part of PLANET_DATA
+
+# --- PLANET DATA ---
+PLANET_DATA = {
+    "Earth": {
+        "radius_km": 6371,
+        "color": "#0052cc", # Ocean blue
+        "land_color": "#006400", # Dark green
+        "continents": [ # Normalized continent shapes
+            np.array([[0.1, 0.2], [0.3, 0.1], [0.5, 0.3], [0.4, 0.5], [0.2, 0.4]]),
+            np.array([[-0.5, -0.1], [-0.3, -0.2], [-0.2, -0.5], [-0.4, -0.6], [-0.6, -0.4]]),
+            np.array([[-0.2, 0.5], [-0.1, 0.3], [0.1, 0.6], [-0.1, 0.8]]),
+            np.array([[0.2, -0.7], [0.3, -0.6], [0.4, -0.8]])
+        ]
+    },
+    "Mars": {
+        "radius_km": 3389.5,
+        "color": "#b33a00", # Reddish
+        "land_color": "#8c2e00", # Darker red "spots"
+        "continents": [
+            np.array([[-0.4, 0.1], [-0.2, 0.2], [-0.3, 0.5], [-0.5, 0.4]]),
+            np.array([[0.1, -0.1], [0.3, -0.2], [0.4, -0.5], [0.2, -0.4]]),
+            np.array([[0.5, 0.5], [0.6, 0.6], [0.5, 0.7], [0.4, 0.6]]),
+        ]
+    },
+    "Moon": {
+        "radius_km": 1737.4,
+        "color": "#808080", # Grey
+        "land_color": "#595959", # Darker grey "craters"
+        "continents": [ 
+            np.array([[-0.2, 0.1], [-0.1, 0.2], [-0.2, 0.3], [-0.3, 0.2]]),
+            np.array([[0.2, -0.3], [0.3, -0.2], [0.4, -0.4], [0.3, -0.5]]),
+            np.array([[0.5, 0.5], [0.6, 0.6], [0.5, 0.7], [0.4, 0.6]]),
+            np.array([[-0.6, -0.6], [-0.5, -0.5], [-0.6, -0.4], [-0.7, -0.5]]),
+        ]
+    }
+}
+
 
 # Login Page Background Image
 LOGIN_BG_IMAGE_FILENAME = "login.png"
